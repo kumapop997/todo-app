@@ -1,0 +1,6 @@
+{
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu24.04",
+    "features": {
+        "ghcr.io/devcontainers/features/node:2.1.0": { "version": "22" }
+    }
+}

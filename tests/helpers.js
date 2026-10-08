@@ -152,7 +152,8 @@ function validTodo(overrides = {}) {
  *   todos: t() / done() の配列。storage: localStorage へそのまま入れる値。now: 現在時刻（ISO）
  */
 async function open(page, { todos, storage, now = T0 } = {}) {
-  await page.clock.install({ time: new Date(now) });
+  // install した時計は実時間で進む。pauseAt は過去へ戻れないので、少し前の時刻から始めて now まで進めて止める
+  await page.clock.install({ time: new Date(Date.parse(now) - 3_600_000) });
   await page.clock.pauseAt(new Date(now));
   const seed = { ...(storage || {}) };
   if (todos) seed[KEY] = stateJson(buildTodos(todos));

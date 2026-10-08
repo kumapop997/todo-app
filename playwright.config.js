@@ -6,6 +6,8 @@ const { defineConfig } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: './tests',
   fullyParallel: true,
+  // Chromium を同時に多く立ち上げるとメモリの少ない環境で極端に遅くなり、タイムアウトで落ちる
+  workers: 2,
   forbidOnly: !!process.env.CI,
   reporter: 'list',
   use: {

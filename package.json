@@ -1,0 +1,11 @@
+{
+  "name": "todo-app-tests",
+  "private": true,
+  "description": "ToDoアプリの E2E テスト用（アプリ本体はこのファイルに依存しない）",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}

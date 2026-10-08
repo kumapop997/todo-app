@@ -460,4 +460,54 @@ test.describe('詳細', () => {
     for (const text of ['リンクを入力:', '保存']) expect(texts).toContain(text);
     for (const text of ['Enter link:', 'Save']) expect(texts).not.toContain(text);
   });
+
+  test('RICH-42 行頭で [ ] や [x] と入力すると、チェックリストではなく番号なしの箇条書きになる', async ({ page }) => {
+    await open(page);
+    for (const prefix of ['[ ] ', '[x] ']) {
+      await restart(page);
+      await typeDetail(page, `${prefix}牛乳`);
+      await expect(ui(page).editor, prefix).toHaveText('牛乳');
+      expect((await formatOf(page, '牛乳')).list, prefix).toBe('bullet');
+      await saveAndClose(page);
+      const detail = await savedDetail(page);
+      expect(deltaText(detail), prefix).toBe('牛乳\n');
+      expect(listValues(detail), prefix).toEqual(['bullet']);
+      // 次の値を試す前に、登録した A を消しておく
+      await page.evaluate(() => localStorage.clear());
+    }
+  });
+
+  test('RICH-43 貼り付けたチェックリストは、番号なしの箇条書きになる', async ({ page }) => {
+    await start(page);
+    const u = ui(page);
+    await u.editor.click();
+    await pasteHtml(page, '<ul data-checked="true"><li>済</li></ul><ol><li data-list="unchecked">未</li></ol>', '済\n未');
+    await expect(u.editor).toContainText('未');
+    for (const text of ['済', '未']) expect((await formatOf(page, text)).list, text).toBe('bullet');
+    await saveAndClose(page);
+    const detail = await savedDetail(page);
+    for (const text of ['済', '未']) expect(deltaText(detail)).toContain(text);
+    expect(listValues(detail)).toEqual(['bullet', 'bullet']);
+  });
+
+  test('RICH-44 保存データのチェックリストは、書式を取り除いて文字だけ表示する', async ({ page }) => {
+    const stored = {
+      ops: [
+        { insert: '済' }, { insert: '\n', attributes: { list: 'checked' } },
+        { insert: '未' }, { insert: '\n', attributes: { list: 'unchecked' } },
+      ],
+    };
+    await open(page, { todos: [t('A', undefined, { detail: stored })] });
+    const u = ui(page);
+    await openTodo(page, 'A');
+    await expect(u.editor).toContainText('済');
+    await expect(u.editor).toContainText('未');
+    await expect(u.editor.locator('li')).toHaveCount(0);
+    await saveAndClose(page);
+    for (const message of ERRORS) await expect(page.getByText(message, { exact: true })).toHaveCount(0);
+    await expectNoNotice(page);
+    const detail = await savedDetail(page);
+    expect(deltaText(detail)).toBe('済\n未\n');
+    expect(attrKeys(detail)).toEqual([]);
+  });
 });

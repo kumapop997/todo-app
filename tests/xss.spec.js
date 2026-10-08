@@ -2,12 +2,26 @@
 // docs/test-case.md 3.14 HTML の無害化（XSS）
 const {
   test, expect, open, ui, t, done, selectTab, expectTitles, trackDialogs, confirmOf, openNew, openTodo,
-  typeDetail, saveAndClose, addTodo, pasteHtml, formatOf,
+  typeDetail, saveAndClose, addTodo, pasteHtml, formatOf, openSecond, buildTodos, stateJson, KEY, savedTodo,
 } = require('./helpers');
 
 const SCRIPT = '<script>window.__xss=1</script>';
 const IMG = '<img src=x onerror="window.__xss=1">';
 const BOLD = '<b>太字</b>';
+
+/** XSS-11、12: 埋め込み・許可していないリンクと書式を含む詳細 */
+const DIRTY_DETAIL = {
+  ops: [
+    { insert: { image: 'https://example.com/x.png' } },
+    { insert: '文字', attributes: { link: 'javascript:window.__xss=1', bold: true, size: 'huge' } },
+    { insert: '\n', attributes: { header: 1 } },
+  ],
+};
+
+/** 文字と許可した書式（bold）だけが残っている */
+function expectCleaned(detail) {
+  expect(detail).toEqual({ ops: [{ insert: '文字', attributes: { bold: true } }, { insert: '\n' }] });
+}
 
 const xssFlag = (page) => page.evaluate(() => /** @type {any} */ (window).__xss);
 
@@ -152,5 +166,27 @@ test.describe('HTML の無害化', () => {
       expect(format.textAlign, `${text} の揃え`).not.toBe('center');
       expect(format.verticalAlign, `${text} の上付き`).not.toBe('super');
     }
+  });
+
+  test('XSS-11 保存データの詳細にある許可していない内容は、読み込んだ時点で取り除き、次の保存で書き出さない', async ({ page }) => {
+    await open(page, { todos: [t('悪', undefined, { detail: DIRTY_DETAIL }), t('B')] });
+    const u = ui(page);
+    await expectTitles(page, ['悪', 'B']);
+    await expect(u.notices).toHaveCount(0);
+    await u.completeButton('B').click();
+    await expectTitles(page, ['悪']);
+    expectCleaned((await savedTodo(page, '悪')).detail);
+    expect(await xssFlag(page)).toBeUndefined();
+  });
+
+  test('XSS-12 別タブから届いた詳細の許可していない内容も、取り除いてから保存する', async ({ page, context }) => {
+    await open(page, { todos: [t('A')] });
+    const page2 = await openSecond(context);
+    const todos = buildTodos([t('A'), t('悪', undefined, { detail: DIRTY_DETAIL })]);
+    await page2.evaluate(([key, value]) => localStorage.setItem(key, value), [KEY, stateJson(todos)]);
+    await expectTitles(page, ['A', '悪']);
+    await ui(page).completeButton('A').click();
+    await expectTitles(page, ['悪']);
+    expectCleaned((await savedTodo(page, '悪')).detail);
   });
 });

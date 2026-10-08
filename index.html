@@ -303,7 +303,9 @@ function parseStoredTodo(raw) {
   if (typeof completed !== 'boolean') return null;
   if (completed ? !isIsoDateTime(completedAt) : completedAt !== null) return null;
   if (!isIsoDateTime(createdAt) || !isIsoDateTime(updatedAt)) return null;
-  return { id, title, dueType, dueDate, dueTime, detail, completed, completedAt, createdAt, updatedAt };
+  // 詳細は、許可した内容だけにしてから持つ（保存し直すときにも、許可していない内容を書き出さない）
+  const cleanDetail = { ops: sanitizeOps(detail.ops) };
+  return { id, title, dueType, dueDate, dueTime, detail: cleanDetail, completed, completedAt, createdAt, updatedAt };
 }
 
 /** 保存されている文字列を ToDo の配列にする。壊れていれば null */
@@ -470,6 +472,17 @@ function formatDue(todo, now) {
   return text;
 }
 
+/** 前後の空白を取り除き、上限を超えた分を切り捨てる。絵文字が半分に切れる場合は、その絵文字ごと落とす */
+function clampTitle(text) {
+  let title = text.trim();
+  if (title.length > TITLE_MAX) {
+    title = title.slice(0, TITLE_MAX);
+    if (isHighSurrogate(title[title.length - 1])) title = title.slice(0, -1);
+    title = title.trimEnd();
+  }
+  return title;
+}
+
 /**
  * 詳細画面の入力を検証する（spec.md 5.4）。
  * @param {{ title: string, dueType: string, date: string, time: string }} form
@@ -477,7 +490,7 @@ function formatDue(todo, now) {
  */
 function validateForm(form) {
   const errors = {};
-  const title = form.title.trim();
+  const title = clampTitle(form.title);
   if (title === '') errors.title = MSG.titleRequired;
 
   let dueDate = null;

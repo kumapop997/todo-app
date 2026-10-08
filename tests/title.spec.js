@@ -160,4 +160,25 @@ test.describe('タイトル', () => {
     await page.keyboard.type('い');
     await expect(u.titleInput).toHaveValue(EMOJI50);
   });
+
+  test('TITLE-15 入力欄の制限を通らずに 100 文字を超えたタイトルは、保存時に 100 文字に切り詰める', async ({ page }) => {
+    await open(page);
+    const u = ui(page);
+    const cases = [
+      ['あ'.repeat(100) + 'い'.repeat(50), 'あ'.repeat(100)],
+      ['あ'.repeat(99) + '😀い', 'あ'.repeat(99)],
+    ];
+    for (const [input, expected] of cases) {
+      await page.evaluate(() => localStorage.clear());
+      await page.reload();
+      await openNew(page);
+      await u.titleInput.evaluate((el) => el.removeAttribute('maxlength'));
+      await u.titleInput.fill(input);
+      await saveAndClose(page);
+      expect((await savedTodos(page)).map((todo) => todo.title)).toEqual([expected]);
+      await page.reload();
+      await expect(u.notices).toHaveCount(0);
+      await expectTitles(page, [expected]);
+    }
+  });
 });

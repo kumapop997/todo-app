@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToDoリスト</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" integrity="sha384-ecIckRi4QlKYya/FQUbBUjS4qp65jF/J87Guw5uzTbO1C1Jfa/6kYmd6dXUF6D7i" crossorigin="anonymous">
+<style>
+  :root {
+    --text: #222;
+    --muted: #8a8a8a;
+    --line: #ccc;
+    --accent: #1a5fb4;
+    --danger: #c62828;
+  }
+  * { box-sizing: border-box; }
+  html { overflow-y: scroll; }
+  body {
+    margin: 0;
+    color: var(--text);
+    background: #f5f5f3;
+    font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  button, input { font: inherit; color: inherit; }
+  button {
+    padding: 4px 14px;
+    border: 1px solid #999;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #eef3fa; }
+  button:disabled { color: #aaa; border-color: #ddd; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .app {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 16px 24px 48px;
+  }
+  h1 { margin: 8px 0 12px; font-size: 28px; }
+
+  /* 画面上部のメッセージ */
+  .notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border: 1px solid #e0b4b4;
+    border-radius: 4px;
+    background: #fdecea;
+    color: #8c1d18;
+  }
+  .notice-text { flex: 1; min-width: 0; }
+  .notice-close { padding: 0 8px; border-color: transparent; background: transparent; color: inherit; }
+
+  .toolbar-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tabs { display: flex; gap: 4px; }
+  .tab {
+    margin-bottom: -1px;
+    padding: 6px 20px;
+    border: 1px solid var(--line);
+    border-radius: 6px 6px 0 0;
+    background: #e9e9e6;
+  }
+  .tab[aria-selected="true"] {
+    border-bottom-color: #fff;
+    background: #fff;
+    color: var(--accent);
+    font-weight: bold;
+  }
+  #clear-done { margin-bottom: 6px; }
+
+  .todo-list {
+    padding: 8px 16px 16px;
+    border: 1px solid var(--line);
+    border-top: 0;
+    background: #fff;
+  }
+  .section-heading { margin: 16px 0 0; font-size: 16px; }
+  .todo-list hr { margin: 4px 0 4px; border: 0; border-top: 1px solid #999; }
+  .empty { margin: 24px 0; color: #666; text-align: center; }
+
+  .todo-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 4px;
+    border-bottom: 1px solid #eee;
+  }
+  .todo-title {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 4px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .todo-title:hover:not(:disabled) { background: transparent; text-decoration: underline; }
+  .todo-due { flex: none; min-width: 9em; white-space: nowrap; color: var(--text); }
+  .todo-row button:not(.todo-title) { flex: none; white-space: nowrap; }
+  .todo-due.overdue { color: var(--danger); font-weight: bold; }
+  .todo-row.completed .todo-title { color: var(--muted); text-decoration: line-through; }
+  .todo-row.completed .todo-title:hover { text-decoration: line-through underline; }
+  .todo-row.completed .todo-due { color: var(--muted); }
+
+  /* 詳細画面 */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .overlay[hidden] { display: none; }
+  .dialog {
+    width: 640px;
+    max-width: calc(100vw - 80px);
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    padding: 20px 24px;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+  .dialog h2 { margin: 0 0 12px; font-size: 20px; }
+  .field { margin-bottom: 14px; }
+  .field-label { display: block; margin-bottom: 4px; font-weight: bold; }
+  .dialog input[type="text"] {
+    padding: 4px 8px;
+    border: 1px solid #999;
+    border-radius: 4px;
+    background: #fff;
+  }
+  .dialog input[type="text"]:disabled { border-color: #ddd; background: #f0f0f0; color: #999; }
+  #title-input { width: 100%; }
+  fieldset.field { min-width: 0; padding: 0; border: 0; }
+  fieldset.field legend { padding: 0; }
+  .due-option { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+  .due-option label { display: inline-flex; align-items: center; gap: 4px; min-width: 5em; }
+  .date-input { width: 9em; }
+  .time-input { width: 6em; }
+  .error { margin: 4px 0 0; color: var(--danger); }
+  .error[hidden] { display: none; }
+  #editor .ql-editor { min-height: 120px; max-height: 200px; overflow-y: auto; font-size: 15px; }
+  /* 文字色を付けたリンクは、Quill 標準のリンク色ではなく付けた色で表示する */
+  #editor .ql-editor [style^="color:"] a,
+  #editor .ql-editor [style*=" color:"] a { color: inherit; }
+  .counter { margin-top: 4px; color: #666; text-align: right; font-size: 14px; }
+  .dialog-buttons { display: flex; justify-content: flex-end; gap: 12px; }
+  #save-button { border-color: var(--accent); background: var(--accent); color: #fff; }
+  #save-button:hover { background: #164f96; }
+
+  /* Quill のリンク用ポップアップの文言（spec.md 5.2） */
+  #editor .ql-tooltip::before { content: "リンク先:"; }
+  #editor .ql-tooltip[data-mode="link"]::before { content: "リンクを入力:"; }
+  #editor .ql-tooltip a.ql-action::after { content: "編集"; }
+  #editor .ql-tooltip.ql-editing a.ql-action::after { content: "保存"; }
+  #editor .ql-tooltip a.ql-remove::before { content: "削除"; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="notices"></div>
+  <h1>ToDoリスト</h1>
+  <button type="button" id="new-button">新規</button>
+  <div class="toolbar-row">
+    <div class="tabs" role="tablist" aria-label="表示する ToDo">
+      <button type="button" class="tab" role="tab" data-tab="all" aria-selected="false">すべて</button>
+      <button type="button" class="tab" role="tab" data-tab="active" aria-selected="true">未完了</button>
+      <button type="button" class="tab" role="tab" data-tab="done" aria-selected="false">完了済</button>
+    </div>
+    <button type="button" id="clear-done" disabled>完了済を削除</button>
+  </div>
+  <div id="todo-list" class="todo-list" data-testid="todo-list"></div>
+</div>
+
+<div id="overlay" class="overlay" hidden>
+  <div id="dialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-heading">
+    <h2 id="dialog-heading">ToDo の詳細</h2>
+
+    <div class="field">
+      <label class="field-label" for="title-input">タイトル</label>
+      <input type="text" id="title-input" maxlength="100" autocomplete="off">
+      <p class="error" id="title-error" hidden></p>
+    </div>
+
+    <fieldset class="field">
+      <legend class="field-label">日時</legend>
+      <div class="due-option">
+        <label><input type="radio" name="due-type" value="none" checked>なし</label>
+      </div>
+      <div class="due-option">
+        <label><input type="radio" name="due-type" value="date">日のみ</label>
+        <input type="text" class="date-input" id="date-only" data-testid="due-date-only"
+               aria-label="日付（日のみ）" placeholder="2026/10/07" autocomplete="off" disabled>
+      </div>
+      <div class="due-option">
+        <label><input type="radio" name="due-type" value="datetime">日時</label>
+        <input type="text" class="date-input" id="datetime-date" data-testid="due-datetime-date"
+               aria-label="日付（日時）" placeholder="2026/10/07" autocomplete="off" disabled>
+        <input type="text" class="time-input" id="datetime-time" data-testid="due-datetime-time"
+               aria-label="時刻" placeholder="15:30" autocomplete="off" disabled>
+      </div>
+      <p class="error" id="date-error" hidden></p>
+      <p class="error" id="time-error" hidden></p>
+    </fieldset>
+
+    <div class="field">
+      <span class="field-label" id="detail-label">詳細</span>
+      <div id="editor-wrap"><div id="editor"></div></div>
+      <div class="counter" id="counter">0 / 2000</div>
+    </div>
+
+    <div class="dialog-buttons">
+      <button type="button" id="save-button">保存</button>
+      <button type="button" id="cancel-button">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js" integrity="sha384-utBUCeG4SYaCm4m7GQZYr8Hy8Fpy3V4KGjBZaf4WTKOcwhCYpt/0PfeEe3HNlwx8" crossorigin="anonymous"></script>
+<script>
+'use strict';
+
+// ===========================================================================
+// 1. 定数
+// ===========================================================================
+
+const STORAGE_KEY = 'todo-app.todos';
+const BROKEN_KEY = 'todo-app.todos.broken';
+const DATA_VERSION = 1;
+const TITLE_MAX = 100;
+const DETAIL_MAX = 2000;
+const TICK_MS = 60 * 1000;
+
+const SECTIONS = [
+  { key: 'overdue', label: '期限切れ' },
+  { key: 'today', label: '本日中' },
+  { key: 'tomorrow', label: '明日まで' },
+  { key: 'other', label: 'それ以外' },
+];
+
+const EMPTY_MESSAGES = {
+  all: 'ToDoはありません。[新規]から登録してください。',
+  active: '未完了のToDoはありません。',
+  done: '完了済みのToDoはありません。',
+};
+
+const MSG = {
+  titleRequired: 'タイトルを入力してください。',
+  dateRequired: '日付を入力してください。',
+  timeRequired: '時刻を入力してください。',
+  dateInvalid: '日付を正しく入力してください。',
+  timeInvalid: '時刻を正しく入力してください。',
+  loadFailed: '保存データを読み込めませんでした。',
+  saveFailed: '保存できませんでした。',
+  quillFailed: 'エディタを読み込めませんでした。インターネット接続を確認してください。',
+  discard: '変更を破棄しますか？',
+};
+
+// Quill に許可する書式（spec.md 5.2）
+const QUILL_FORMATS = ['bold', 'italic', 'underline', 'strike', 'color', 'background', 'list', 'link'];
+const LINK_PATTERN = /^(https?:\/\/|mailto:)/i;
+const BLOCKED_LINK = 'about:blank';
+
+// ===========================================================================
+// 2. ストレージ層
+// ===========================================================================
+
+const isPlainObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isIsoDateTime = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
+
+/** 保存データの ToDo 1 件を検証し、6.2 の項目だけを持つオブジェクトにする。不正なら null */
+function parseStoredTodo(raw) {
+  if (!isPlainObject(raw)) return null;
+  const { id, title, dueType, dueDate, dueTime, detail, completed, completedAt, createdAt, updatedAt } = raw;
+  if (typeof id !== 'string') return null;
+  if (typeof title !== 'string' || title.length < 1 || title.length > TITLE_MAX) return null;
+  if (dueType === 'none') {
+    if (dueDate !== null || dueTime !== null) return null;
+  } else if (dueType === 'date') {
+    if (!isStoredDate(dueDate) || dueTime !== null) return null;
+  } else if (dueType === 'datetime') {
+    if (!isStoredDate(dueDate) || !isStoredTime(dueTime)) return null;
+  } else {
+    return null;
+  }
+  if (!isPlainObject(detail) || !Array.isArray(detail.ops)) return null;
+  if (typeof completed !== 'boolean') return null;
+  if (completed ? !isIsoDateTime(completedAt) : completedAt !== null) return null;
+  if (!isIsoDateTime(createdAt) || !isIsoDateTime(updatedAt)) return null;
+  return { id, title, dueType, dueDate, dueTime, detail, completed, completedAt, createdAt, updatedAt };
+}
+
+/** 保存されている文字列を ToDo の配列にする。壊れていれば null */
+function parseStoredState(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!isPlainObject(data) || data.version !== DATA_VERSION || !Array.isArray(data.todos)) return null;
+  const todos = data.todos.map(parseStoredTodo);
+  return todos.includes(null) ? null : todos;
+}
+
+const serializeState = (todos) => JSON.stringify({ version: DATA_VERSION, todos });
+
+/** 起動時の読み込み。壊れていたら退避して空のリストで書き直す */
+function loadTodos() {
+  let text;
+  try {
+    text = localStorage.getItem(STORAGE_KEY);
+  } catch (e) {
+    return { todos: [], broken: true };
+  }
+  if (text === null) return { todos: [], broken: false };
+  const todos = parseStoredState(text);
+  if (todos) return { todos, broken: false };
+  try {
+    localStorage.setItem(BROKEN_KEY, text);
+    localStorage.setItem(STORAGE_KEY, serializeState([]));
+  } catch (e) {
+    // 退避できなくても、空のリストで起動する
+  }
+  return { todos: [], broken: true };
+}
+
+/** 書き込めたら true */
+function writeTodos(todos) {
+  try {
+    localStorage.setItem(STORAGE_KEY, serializeState(todos));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ===========================================================================
+// 3. 純粋関数
+// ===========================================================================
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function daysInMonth(year, month) {
+  if (month === 2) return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 29 : 28;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+const isRealDate = (y, m, d) => m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(y, m);
+const isRealTime = (h, mi) => h >= 0 && h <= 23 && mi >= 0 && mi <= 59;
+
+function isStoredDate(value) {
+  const m = typeof value === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return !!m && isRealDate(Number(m[1]), Number(m[2]), Number(m[3]));
+}
+
+function isStoredTime(value) {
+  const m = typeof value === 'string' && /^(\d{2}):(\d{2})$/.exec(value);
+  return !!m && isRealTime(Number(m[1]), Number(m[2]));
+}
+
+/** 入力欄の日付（YYYY/M/D）を保存形式（YYYY-MM-DD）にする。形式が違うか存在しない日付なら null */
+function parseDateInput(text) {
+  const m = /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/.exec(text.trim());
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  return isRealDate(y, mo, d) ? `${m[1]}-${pad2(mo)}-${pad2(d)}` : null;
+}
+
+/** 入力欄の時刻（H:MM）を保存形式（HH:MM）にする。形式が違うか存在しない時刻なら null */
+function parseTimeInput(text) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
+  if (!m) return null;
+  const [h, mi] = [Number(m[1]), Number(m[2])];
+  return isRealTime(h, mi) ? `${pad2(h)}:${pad2(mi)}` : null;
+}
+
+const dateToInput = (dueDate) => (dueDate ? dueDate.replace(/-/g, '/') : '');
+
+/** ローカル時刻の Date を組み立てる（年が 2 桁でも 1900 年代に読み替えない） */
+function localDate(y, mo, d, h, mi, s, ms) {
+  const date = new Date(0);
+  date.setFullYear(y, mo - 1, d);
+  date.setHours(h, mi, s, ms);
+  return date;
+}
+
+/** 締め切り時点（ミリ秒）。締め切りなしは null */
+function deadlineOf(todo) {
+  if (todo.dueType === 'none') return null;
+  const [y, mo, d] = todo.dueDate.split('-').map(Number);
+  if (todo.dueType === 'date') return localDate(y, mo, d, 23, 59, 59, 999).getTime();
+  const [h, mi] = todo.dueTime.split(':').map(Number);
+  return localDate(y, mo, d, h, mi, 0, 0).getTime();
+}
+
+/** 区分の判定（spec.md 3.2）。now は Date */
+function sectionOf(todo, now) {
+  const deadline = deadlineOf(todo);
+  if (deadline === null) return 'other';
+  if (deadline < now.getTime()) return 'overdue';
+  const y = now.getFullYear();
+  const mo = now.getMonth() + 1;
+  const d = now.getDate();
+  if (deadline < localDate(y, mo, d + 1, 0, 0, 0, 0).getTime()) return 'today';
+  if (deadline < localDate(y, mo, d + 2, 0, 0, 0, 0).getTime()) return 'tomorrow';
+  return 'other';
+}
+
+const byCreated = (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt);
+
+/** 締め切り時点が早い順 → 登録が古い順。締め切りなしは最後尾（spec.md 3.3） */
+function compareByDeadline(a, b) {
+  const da = deadlineOf(a);
+  const db = deadlineOf(b);
+  if (da !== db) {
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return da - db;
+  }
+  return byCreated(a, b);
+}
+
+/** 完了した日時が新しい順 → 登録が古い順（spec.md 4.2） */
+function compareByCompleted(a, b) {
+  return Date.parse(b.completedAt) - Date.parse(a.completedAt) || byCreated(a, b);
+}
+
+/**
+ * タブに表示する内容を、上から順のグループにする。
+ * @returns {{ label: string | null, key: string | null, todos: object[] }[]}
+ */
+function buildGroups(todos, tab, now) {
+  if (tab === 'done') {
+    const list = todos.filter((todo) => todo.completed).sort(compareByCompleted);
+    return list.length ? [{ label: null, key: null, todos: list }] : [];
+  }
+  const target = (tab === 'active' ? todos.filter((todo) => !todo.completed) : todos.slice()).sort(compareByDeadline);
+  return SECTIONS
+    .map(({ key, label }) => ({ key, label, todos: target.filter((todo) => sectionOf(todo, now) === key) }))
+    .filter((group) => group.todos.length > 0);
+}
+
+/** 締め切りの表示（spec.md 4.5） */
+function formatDue(todo, now) {
+  if (todo.dueType === 'none') return '';
+  const [y, mo, d] = todo.dueDate.split('-').map(Number);
+  let text = `${mo}月${d}日`;
+  if (y !== now.getFullYear()) text = `${y}年${text}`;
+  if (todo.dueType === 'datetime') {
+    const [h, mi] = todo.dueTime.split(':').map(Number);
+    text += ` ${h}:${pad2(mi)}`;
+  }
+  return text;
+}
+
+/**
+ * 詳細画面の入力を検証する（spec.md 5.4）。
+ * @param {{ title: string, dueType: string, date: string, time: string }} form
+ * @returns {{ errors: { title?: string, date?: string, time?: string }, values: object }}
+ */
+function validateForm(form) {
+  const errors = {};
+  const title = form.title.trim();
+  if (title === '') errors.title = MSG.titleRequired;
+
+  let dueDate = null;
+  let dueTime = null;
+  if (form.dueType !== 'none') {
+    if (form.date.trim() === '') errors.date = MSG.dateRequired;
+    else if ((dueDate = parseDateInput(form.date)) === null) errors.date = MSG.dateInvalid;
+  }
+  if (form.dueType === 'datetime') {
+    if (form.time.trim() === '') errors.time = MSG.timeRequired;
+    else if ((dueTime = parseTimeInput(form.time)) === null) errors.time = MSG.timeInvalid;
+  }
+  return { errors, values: { title, dueType: form.dueType, dueDate, dueTime } };
+}
+
+const isAllowedLink = (url) => typeof url === 'string' && LINK_PATTERN.test(url);
+
+/** 保存データの Delta から、文字と許可した書式だけを取り出す（埋め込みと未許可の書式は捨てる） */
+function sanitizeOps(ops) {
+  const out = [];
+  for (const op of ops) {
+    if (!isPlainObject(op) || typeof op.insert !== 'string') continue;
+    const source = isPlainObject(op.attributes) ? op.attributes : {};
+    const attributes = {};
+    for (const name of ['bold', 'italic', 'underline', 'strike']) {
+      if (source[name] === true) attributes[name] = true;
+    }
+    for (const name of ['color', 'background']) {
+      if (typeof source[name] === 'string') attributes[name] = source[name];
+    }
+    if (source.list === 'bullet' || source.list === 'ordered') attributes.list = source.list;
+    if (isAllowedLink(source.link)) attributes.link = source.link;
+    out.push(Object.keys(attributes).length ? { insert: op.insert, attributes } : { insert: op.insert });
+  }
+  return out;
+}
+
+/** 変更の Delta から、挿入された文字の範囲（変更後の位置と長さ）を取り出す */
+function insertedRanges(ops) {
+  const ranges = [];
+  let index = 0;
+  for (const op of ops) {
+    if (typeof op.insert === 'string') {
+      ranges.push({ index, length: op.insert.length });
+      index += op.insert.length;
+    } else if (op.insert) {
+      index += 1;
+    } else if (op.retain) {
+      index += typeof op.retain === 'number' ? op.retain : 1;
+    }
+  }
+  return ranges;
+}
+
+const isHighSurrogate = (ch) => ch !== undefined && ch >= '\uD800' && ch <= '\uDBFF';
+const isLowSurrogate = (ch) => ch !== undefined && ch >= '\uDC00' && ch <= '\uDFFF';
+
+/**
+ * 上限を over 文字超えたとき、挿入された範囲の後ろから削る範囲を決める（spec.md 5.2）。
+ * 絵文字が半分に切れる場合は、その絵文字ごと削る。削る順（後ろから）に並べて返す。
+ */
+function overflowCuts(text, ranges, over) {
+  const cuts = [];
+  for (let i = ranges.length - 1; i >= 0 && over > 0; i--) {
+    const { index, length } = ranges[i];
+    const cut = Math.min(over, length);
+    const end = index + length;
+    let start = end - cut;
+    if (isLowSurrogate(text[start]) && isHighSurrogate(text[start - 1])) start -= 1;
+    cuts.push({ index: start, length: end - start });
+    over -= cut;
+  }
+  return cuts;
+}
+
+function newId() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+// ===========================================================================
+// 4. 描画
+// ===========================================================================
+
+const el = {
+  notices: document.getElementById('notices'),
+  newButton: document.getElementById('new-button'),
+  tabs: Array.from(document.querySelectorAll('[role="tab"]')),
+  clearDone: document.getElementById('clear-done'),
+  list: document.getElementById('todo-list'),
+  overlay: document.getElementById('overlay'),
+  dialog: document.getElementById('dialog'),
+  title: document.getElementById('title-input'),
+  radios: Array.from(document.querySelectorAll('input[name="due-type"]')),
+  dateOnly: document.getElementById('date-only'),
+  dtDate: document.getElementById('datetime-date'),
+  dtTime: document.getElementById('datetime-time'),
+  titleError: document.getElementById('title-error'),
+  dateError: document.getElementById('date-error'),
+  timeError: document.getElementById('time-error'),
+  counter: document.getElementById('counter'),
+  save: document.getElementById('save-button'),
+  cancel: document.getElementById('cancel-button'),
+};
+
+// 状態。ToDo は todos を唯一の元とする
+let todos = [];
+let currentTab = 'active';
+let notices = [];
+let quill = null;
+/** 詳細画面を開いている間だけ入る。todo は編集中の ToDo の最新の内容（新規なら null） */
+let editing = null;
+
+function create(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function renderRow(todo, now, sectionKey) {
+  const row = create('div', todo.completed ? 'todo-row completed' : 'todo-row');
+  row.dataset.testid = 'todo-row';
+
+  const title = create('button', 'todo-title', todo.title);
+  title.type = 'button';
+  title.dataset.testid = 'todo-title';
+  title.addEventListener('click', () => openDialog(todo.id));
+
+  const overdue = !todo.completed && (sectionKey || sectionOf(todo, now)) === 'overdue';
+  const due = create('span', overdue ? 'todo-due overdue' : 'todo-due', formatDue(todo, now));
+  due.dataset.testid = 'todo-due';
+
+  const toggle = create('button', '', todo.completed ? '未完了に戻す' : '完了');
+  toggle.type = 'button';
+  toggle.addEventListener('click', () => toggleCompleted(todo.id));
+
+  const remove = create('button', '', '削除');
+  remove.type = 'button';
+  remove.addEventListener('click', () => deleteTodo(todo.id));
+
+  row.append(title, due, toggle, remove);
+  return row;
+}
+
+function renderList() {
+  const now = new Date();
+  const nodes = [];
+  for (const group of buildGroups(todos, currentTab, now)) {
+    if (group.label) nodes.push(create('h2', 'section-heading', group.label), create('hr'));
+    for (const todo of group.todos) nodes.push(renderRow(todo, now, group.key));
+  }
+  if (nodes.length === 0) nodes.push(create('p', 'empty', EMPTY_MESSAGES[currentTab]));
+  el.list.replaceChildren(...nodes);
+}
+
+function render() {
+  for (const tab of el.tabs) tab.setAttribute('aria-selected', String(tab.dataset.tab === currentTab));
+  el.clearDone.disabled = !todos.some((todo) => todo.completed);
+  el.newButton.disabled = !quill;
+  renderList();
+}
+
+function renderNotices() {
+  el.notices.replaceChildren(...notices.map((text) => {
+    const box = create('div', 'notice');
+    box.dataset.testid = 'notice';
+    box.setAttribute('role', 'alert');
+    const close = create('button', 'notice-close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', '閉じる');
+    close.addEventListener('click', () => removeNotice(text));
+    box.append(create('span', 'notice-text', text), close);
+    return box;
+  }));
+}
+
+function addNotice(text) {
+  if (notices.includes(text)) return;
+  notices.push(text);
+  renderNotices();
+}
+
+function removeNotice(text) {
+  if (!notices.includes(text)) return;
+  notices = notices.filter((n) => n !== text);
+  renderNotices();
+}
+
+function showErrors(errors) {
+  for (const [node, text] of [[el.titleError, errors.title], [el.dateError, errors.date], [el.timeError, errors.time]]) {
+    node.textContent = text || '';
+    node.hidden = !text;
+  }
+}
+
+const detailLength = () => quill.getLength() - 1; // Quill が末尾に付ける改行は数えない
+
+function renderCounter() {
+  el.counter.textContent = `${detailLength()} / ${DETAIL_MAX}`;
+}
+
+const selectedDueType = () => el.radios.find((radio) => radio.checked).value;
+
+function renderDueInputs() {
+  const type = selectedDueType();
+  el.dateOnly.disabled = type !== 'date';
+  el.dtDate.disabled = type !== 'datetime';
+  el.dtTime.disabled = type !== 'datetime';
+}
+
+// ===========================================================================
+// 5. イベント処理
+// ===========================================================================
+
+/** todos を入れ替えて保存し、一覧を作り直す。保存できなければ元に戻す */
+function commit(nextTodos) {
+  const previous = todos;
+  todos = nextTodos;
+  const ok = writeTodos(todos);
+  if (ok) {
+    removeNotice(MSG.saveFailed);
+  } else {
+    todos = previous;
+    addNotice(MSG.saveFailed);
+  }
+  render();
+  return ok;
+}
+
+function toggleCompleted(id) {
+  const now = new Date().toISOString();
+  commit(todos.map((todo) => {
+    if (todo.id !== id) return todo;
+    const completed = !todo.completed;
+    return { ...todo, completed, completedAt: completed ? now : null, updatedAt: now };
+  }));
+}
+
+function deleteTodo(id) {
+  const todo = todos.find((item) => item.id === id);
+  if (!todo || !window.confirm(`『${todo.title}』を削除しますか？`)) return;
+  commit(todos.filter((item) => item.id !== id));
+}
+
+function clearCompleted() {
+  const count = todos.filter((todo) => todo.completed).length;
+  if (count === 0 || !window.confirm(`完了済みの ${count} 件を削除しますか？`)) return;
+  commit(todos.filter((todo) => !todo.completed));
+}
+
+// --- 詳細画面 ---------------------------------------------------------------
+
+function initQuill() {
+  if (typeof Quill === 'undefined') return null;
+
+  // 許可していないスキームは、万一リンクになっても飛び先を持たせない
+  const Link = Quill.import('formats/link');
+  class SafeLink extends Link {
+    static sanitize(url) {
+      return isAllowedLink(url) ? url : BLOCKED_LINK;
+    }
+  }
+  Quill.register(SafeLink, true);
+
+  const instance = new Quill('#editor', {
+    theme: 'snow',
+    formats: QUILL_FORMATS,
+    bounds: '#editor-wrap',
+    modules: {
+      toolbar: [
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ color: [] }, { background: [] }],
+        [{ list: 'bullet' }, { list: 'ordered' }],
+        ['link'],
+        ['clean'],
+      ],
+    },
+  });
+  instance.root.setAttribute('aria-labelledby', 'detail-label');
+  const linkInput = instance.theme.tooltip && instance.theme.tooltip.textbox;
+  if (linkInput) linkInput.setAttribute('data-link', 'https://example.com/');
+
+  // Quill は選択範囲を少し遅れて取り込む。ツールバーを押してフォーカスが移る前に、今の選択を確実に覚えさせる
+  instance.getModule('toolbar').container.addEventListener('mousedown', () => {
+    if (instance.hasFocus()) instance.selection.update(Quill.sources.USER);
+  }, true);
+
+  instance.on('text-change', (delta) => {
+    normalizeContents(instance);
+    trimOverflow(instance, delta);
+    renderCounter();
+  });
+  return instance;
+}
+
+/** 許可していないリンクは外して文字だけ残し、チェックリスト（Quill の自動変換で入る）は番号なしの箇条書きにする */
+function normalizeContents(instance) {
+  let index = 0;
+  for (const op of instance.getContents().ops) {
+    const length = typeof op.insert === 'string' ? op.insert.length : 1;
+    const { link, list } = op.attributes || {};
+    if (link !== undefined && !isAllowedLink(link)) instance.formatText(index, length, 'link', false, 'silent');
+    if (list !== undefined && list !== 'bullet' && list !== 'ordered') {
+      instance.formatLine(index, length, 'list', 'bullet', 'silent');
+    }
+    index += length;
+  }
+}
+
+/** 上限を超えた分を、いま入力・貼り付けした文字の後ろから切り捨てる */
+function trimOverflow(instance, delta) {
+  const over = instance.getLength() - 1 - DETAIL_MAX;
+  if (over <= 0) return;
+  for (const cut of overflowCuts(instance.getText(), insertedRanges(delta.ops), over)) {
+    instance.deleteText(cut.index, cut.length, 'silent');
+  }
+}
+
+const readForm = () => {
+  const dueType = selectedDueType();
+  return {
+    title: el.title.value,
+    dueType,
+    date: dueType === 'date' ? el.dateOnly.value : el.dtDate.value,
+    time: el.dtTime.value,
+  };
+};
+
+/** 変更の有無を比べるための、いまの入力内容 */
+const snapshotForm = () => JSON.stringify({ ...readForm(), detail: quill.getContents().ops });
+
+function openDialog(id) {
+  if (!quill || editing) return;
+  const todo = id ? todos.find((item) => item.id === id) : null;
+  if (id && !todo) return;
+
+  el.title.value = todo ? todo.title : '';
+  const dueType = todo ? todo.dueType : 'none';
+  for (const radio of el.radios) radio.checked = radio.value === dueType;
+  el.dateOnly.value = el.dtDate.value = todo ? dateToInput(todo.dueDate) : '';
+  el.dtTime.value = todo && todo.dueTime ? todo.dueTime : '';
+  renderDueInputs();
+  showErrors({});
+
+  quill.setContents(todo ? sanitizeOps(todo.detail.ops) : [], 'silent');
+  quill.history.clear();
+  if (quill.theme.tooltip) quill.theme.tooltip.hide();
+  renderCounter();
+
+  el.overlay.hidden = false;
+  el.dialog.scrollTop = 0;
+  editing = { todo, initial: snapshotForm() };
+  el.title.focus();
+}
+
+function closeDialog() {
+  editing = null;
+  el.overlay.hidden = true;
+}
+
+/** [キャンセル]・Esc・外側クリック */
+function requestClose() {
+  if (!editing) return;
+  if (snapshotForm() !== editing.initial && !window.confirm(MSG.discard)) return;
+  closeDialog();
+}
+
+function saveDialog() {
+  const { errors, values } = validateForm(readForm());
+  showErrors(errors);
+  if (Object.keys(errors).length > 0) return;
+
+  const now = new Date().toISOString();
+  const input = { ...values, detail: { ops: quill.getContents().ops } };
+  let next;
+  if (!editing.todo) {
+    next = [...todos, { id: newId(), ...input, completed: false, completedAt: null, createdAt: now, updatedAt: now }];
+  } else if (todos.some((todo) => todo.id === editing.todo.id)) {
+    // 完了の状態は詳細画面で扱わないので、別タブで変わっていても最新のまま残す
+    next = todos.map((todo) => (todo.id === editing.todo.id ? { ...todo, ...input, updatedAt: now } : todo));
+  } else {
+    // 編集中に別タブで削除された: 元の id と createdAt のまま登録し直す
+    next = [...todos, { ...editing.todo, ...input, updatedAt: now }];
+  }
+  if (commit(next)) closeDialog();
+}
+
+/** 詳細画面の中で、Tab で移動できる要素（表示されていて有効なもの） */
+function focusableInDialog() {
+  const selector = 'input, button, [tabindex="0"], .ql-editor';
+  return Array.from(el.dialog.querySelectorAll(selector)).filter((node) => {
+    if (node.disabled || node.getClientRects().length === 0) return false;
+    return node.type !== 'radio' || node.checked;
+  });
+}
+
+/** Tab / Shift+Tab のフォーカスを詳細画面の中で循環させる */
+function trapTab(event) {
+  if (event.key !== 'Tab' || event.isComposing) return;
+  const items = focusableInDialog();
+  if (items.length === 0) return;
+  event.preventDefault();
+  event.stopPropagation(); // Quill がタブ文字を挿入しないようにする
+  const current = items.indexOf(document.activeElement);
+  let next;
+  if (event.shiftKey) next = current <= 0 ? items.length - 1 : current - 1;
+  else next = current === -1 || current === items.length - 1 ? 0 : current + 1;
+  items[next].focus();
+}
+
+function onStorage(event) {
+  // キーが消された場合（newValue が null）と壊れたデータは無視して、今の一覧を保つ（spec.md 6.5）
+  if (event.storageArea !== localStorage || event.key !== STORAGE_KEY || event.newValue === null) return;
+  const loaded = parseStoredState(event.newValue);
+  if (!loaded) return;
+  todos = loaded;
+  if (editing && editing.todo) {
+    const latest = todos.find((todo) => todo.id === editing.todo.id);
+    if (latest) editing.todo = latest;
+  }
+  render();
+}
+
+function init() {
+  const loaded = loadTodos();
+  todos = loaded.todos;
+  if (loaded.broken) addNotice(MSG.loadFailed);
+  quill = initQuill();
+  if (!quill) addNotice(MSG.quillFailed);
+
+  el.newButton.addEventListener('click', () => openDialog(null));
+  for (const tab of el.tabs) {
+    tab.addEventListener('click', () => {
+      currentTab = tab.dataset.tab;
+      render();
+    });
+  }
+  el.clearDone.addEventListener('click', clearCompleted);
+
+  el.save.addEventListener('click', saveDialog);
+  el.cancel.addEventListener('click', requestClose);
+  for (const radio of el.radios) radio.addEventListener('change', renderDueInputs);
+  // 選択肢を切り替えても入力した日付を引き継げるよう、2 つの日付欄を同じ文字に保つ
+  el.dateOnly.addEventListener('input', () => { el.dtDate.value = el.dateOnly.value; });
+  el.dtDate.addEventListener('input', () => { el.dateOnly.value = el.dtDate.value; });
+  el.title.addEventListener('input', () => {
+    // 上限で絵文字が半分に切れたら、その絵文字ごと落とす
+    if (isHighSurrogate(el.title.value[el.title.value.length - 1])) el.title.value = el.title.value.slice(0, -1);
+  });
+
+  // 外側クリック: 幕の上で押して幕の上で離したときだけ閉じる（内側からのドラッグでは閉じない）
+  let pressedOnOverlay = false;
+  el.overlay.addEventListener('mousedown', (event) => { pressedOnOverlay = event.target === el.overlay; });
+  el.overlay.addEventListener('click', (event) => {
+    if (event.target === el.overlay && pressedOnOverlay) requestClose();
+  });
+  el.dialog.addEventListener('keydown', trapTab, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.isComposing || !editing) return;
+    // リンク用ポップアップの入力中の Esc は、ポップアップを閉じるだけにする
+    if (event.target instanceof Element && event.target.closest('.ql-tooltip')) return;
+    requestClose();
+  });
+
+  window.addEventListener('storage', onStorage);
+  setInterval(render, TICK_MS);
+  render();
+}
+
+init();
+</script>
+</body>
+</html>

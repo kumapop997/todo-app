@@ -234,4 +234,42 @@ test.describe('複数タブ', () => {
     await selectTab(page, 'すべて');
     await expect(u.emptyMessage('すべて')).toBeVisible();
   });
+
+  test('TAB-20 別タブで削除された完了済みの ToDo は、完了済みのまま登録し直される', async ({ page, context }) => {
+    const page2 = await openBoth(page, context, [done('A')]);
+    const { id, createdAt, completedAt } = await savedTodo(page, 'A');
+    await selectTab(page, '完了済');
+    await openTodo(page, 'A');
+    await ui(page).titleInput.fill('復活');
+    trackDialogs(page2, 'accept');
+    await selectTab(page2, '完了済');
+    await ui(page2).deleteButton('A').click();
+    await expectTitles(page2, []);
+    await waitForStorageSync(page2, page);
+    await saveAndClose(page);
+    const todos = await savedTodos(page);
+    expect(todos).toHaveLength(1);
+    expect(todos[0]).toMatchObject({ id, createdAt, title: '復活', completed: true, completedAt });
+    await expectSelectedTab(page, '完了済');
+    await expectTitles(page, ['復活']);
+  });
+
+  test('TAB-21 登録し直すときの完了の状態は、開いた時点ではなく削除される直前のもの', async ({ page, context }) => {
+    const page2 = await openBoth(page, context, [t('A')]);
+    await openTodo(page, 'A');
+    await ui(page).titleInput.fill('復活');
+    await ui(page2).completeButton('A').click();
+    await expectTitles(page2, []);
+    const { completedAt } = await savedTodo(page2, 'A');
+    expect(completedAt).not.toBeNull();
+    trackDialogs(page2, 'accept');
+    await selectTab(page2, '完了済');
+    await ui(page2).deleteButton('A').click();
+    await expectTitles(page2, []);
+    await waitForStorageSync(page2, page);
+    await saveAndClose(page);
+    const todos = await savedTodos(page);
+    expect(todos).toHaveLength(1);
+    expect(todos[0]).toMatchObject({ title: '復活', completed: true, completedAt });
+  });
 });
